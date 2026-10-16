@@ -1,0 +1,14 @@
+services:
+  falkordb:
+    image: falkordb/falkordb:${FALKORDB_TAG:-6.0.0}
+    container_name: parachute-falkordb
+    ports:
+      # localhost only; the bundled browser port (3000) is deliberately NOT published
+      - "127.0.0.1:${FALKORDB_PORT:-6390}:6379"
+    environment:
+      - REDIS_ARGS=--save 60 1 --appendonly yes
+    volumes:
+      - falkordb_data:/var/lib/falkordb/data
+    restart: unless-stopped
+volumes:
+  falkordb_data:
