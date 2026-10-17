@@ -10,6 +10,8 @@ from pathlib import Path
 from .graphdb import GraphClient, GraphUnavailable, connect
 from .loader import load_world
 from .queries import world_summary
+from .engine.layout import Layout
+from .engine.whatif import analyze
 from .scan import scan_world
 from .world.generator import generate_world
 
@@ -17,6 +19,22 @@ from .world.generator import generate_world
 def _graph_for(root: str) -> GraphClient:
     sid = json.loads((Path(root) / ".parachute" / "world.json").read_text())["session"]
     return GraphClient(f"parachute_{sid}")
+
+
+def _brief(result: dict) -> dict:
+    res = result["resolution"]
+    out = {"resolution": {"forced_verdict": res["forced_verdict"], "reasons": res["reasons"],
+                          "destroyed": {k: (len(v) if k == "paths" else v) for k, v in res["destroyed"].items() if v}},
+           "whatif": None}
+    if result["whatif"]:
+        outcome = dict(result["whatif"]["outcome"])
+        counts: dict = {}
+        for r in outcome.pop("recoverable"):
+            key = f"{r['strength']} via {r['via']}"
+            counts[key] = counts.get(key, 0) + 1
+        outcome["recoverable"] = counts
+        out["whatif"] = {**result["whatif"], "outcome": outcome}
+    return out
 
 
 def main(argv=None) -> int:
@@ -29,6 +47,10 @@ def main(argv=None) -> int:
     p.add_argument("--allow-outside", action="store_true", help="explicit opt-in to follow paths outside the sandbox")
     sub.add_parser("summary").add_argument("root")
     sub.add_parser("drop").add_argument("root")
+    w = sub.add_parser("whatif")
+    w.add_argument("root")
+    w.add_argument("command")
+    w.add_argument("--cwd", help="working directory, relative to the sandbox root")
     sub.add_parser("demo")
     a = ap.parse_args(argv)
 
@@ -56,6 +78,10 @@ def main(argv=None) -> int:
         elif a.cmd == "drop":
             _graph_for(a.root).delete()
             print("graph deleted")
+        elif a.cmd == "whatif":
+            cwd = Path(a.root, a.cwd) if a.cwd else Path(a.root, "disk_a", "projects")
+            result = analyze(_graph_for(a.root), Layout.load(a.root), a.command, str(cwd))
+            print(json.dumps(_brief(result), indent=2))
         elif a.cmd == "demo":
             sb = generate_world()
             g = GraphClient(sb.graph_name)

@@ -29,6 +29,13 @@ def scan_world(root, allow_outside: bool = False) -> dict:
         r["reads"] = [x for x in r["reads"] if x in by_id]
     g = scan_git(root, stores, tree_dirs, by_id, allow_outside)
     b = scan_backups(root, stores, by_id, allow_outside)
+    domain_of = {s["id"]: s["domain"] for s in stores}
+    for it in items:
+        it["domain"] = domain_of[it["store"]]
+    for c in b["copies"]:
+        c["domain"] = domain_of[c["store"]]
+    for r in g["refs"]:
+        r["domain"] = domain_of.get(r["store"])
     return {
         "session": meta["session"], "domains": meta["domains"], "stores": stores,
         "items": items, "recipes": recipes,

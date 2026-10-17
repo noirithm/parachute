@@ -21,7 +21,8 @@ L_STORES = "UNWIND $rows AS row MERGE (s:Store {id: row.id}) SET s.path = row.pa
 L_STORE_DOMAIN = ("UNWIND $rows AS row MATCH (s:Store {id: row.store}) MATCH (d:Domain {id: row.domain}) "
                   "MERGE (s)-[:IN_DOMAIN]->(d)")
 L_ITEMS = ("UNWIND $rows AS row MERGE (i:Item {id: row.id}) SET i.path = row.path, i.kind = row.kind, "
-           "i.class = row.cls, i.content_hash = row.content_hash, i.size = row.size, i.blob_sha1 = row.blob_sha1")
+           "i.class = row.cls, i.content_hash = row.content_hash, i.size = row.size, i.blob_sha1 = row.blob_sha1, "
+           "i.domain = row.domain, i.gone = 0")
 L_ITEM_STORE = ("UNWIND $rows AS row MATCH (i:Item {id: row.item}) MATCH (s:Store {id: row.store}) "
                 "MERGE (i)-[:STORED_ON]->(s)")
 L_RECIPES = ("UNWIND $rows AS row MERGE (r:Recipe {id: row.id}) SET r.rule = row.rule, r.command = row.command, "
@@ -31,7 +32,8 @@ L_DERIVED = ("UNWIND $rows AS row MATCH (i:Item {id: row.item}) MATCH (r:Recipe 
 L_READS = ("UNWIND $rows AS row MATCH (r:Recipe {id: row.recipe}) MATCH (i:Item {id: row.item}) "
            "MERGE (r)-[:READS]->(i)")
 L_COPIES = ("UNWIND $rows AS row MERGE (c:Copy {id: row.id}) SET c.kind = row.kind, c.file = row.file, "
-            "c.alive = row.alive, c.encrypted = row.encrypted, c.sha256 = row.sha256, c.verified_at = row.verified_at")
+            "c.alive = row.alive, c.encrypted = row.encrypted, c.sha256 = row.sha256, c.verified_at = row.verified_at, "
+            "c.path = row.path, c.domain = row.domain, c.gone = 0")
 L_COPY_STORE = ("UNWIND $rows AS row MATCH (c:Copy {id: row.copy}) MATCH (s:Store {id: row.store}) "
                 "MERGE (c)-[:STORED_ON]->(s)")
 L_COPY_OF = ("UNWIND $rows AS row MATCH (c:Copy {id: row.copy}) MATCH (i:Item {id: row.item}) "
@@ -42,7 +44,7 @@ L_COMMITS = "UNWIND $rows AS row MERGE (c:Commit {sha: row.sha}) SET c.subject =
 L_PARENTS = ("UNWIND $rows AS row MATCH (a:Commit {sha: row.child}) MATCH (b:Commit {sha: row.parent}) "
              "MERGE (a)-[:PARENT]->(b)")
 L_REFS = ("UNWIND $rows AS row MERGE (r:Ref {id: row.id}) SET r.kind = row.kind, r.name = row.name, "
-          "r.repo = row.repo")
+          "r.repo = row.repo, r.domain = row.domain, r.gone = 0, r.prunable = 0")
 L_REF_STORE = ("UNWIND $rows AS row MATCH (r:Ref {id: row.ref}) MATCH (s:Store {id: row.store}) "
                "MERGE (r)-[:STORED_ON]->(s)")
 L_POINTS_TO = ("UNWIND $rows AS row MATCH (r:Ref {id: row.ref}) MATCH (c:Commit {sha: row.sha}) "
@@ -80,7 +82,7 @@ def load_world(g: GraphClient, world: dict, reset: bool = False) -> dict:
     _run(g, L_DOMAINS, world["domains"])
     _run(g, L_STORES, [{"id": s["id"], "path": s["path"], "kind": s["kind"]} for s in world["stores"]])
     _run(g, L_STORE_DOMAIN, [{"store": s["id"], "domain": s["domain"]} for s in world["stores"]])
-    _run(g, L_ITEMS, [{k: i[k] for k in ("id", "path", "kind", "cls", "content_hash", "size", "blob_sha1")}
+    _run(g, L_ITEMS, [{k: i[k] for k in ("id", "path", "kind", "cls", "content_hash", "size", "blob_sha1", "domain")}
                       for i in items])
     _run(g, L_ITEM_STORE, [{"item": i["id"], "store": i["store"]} for i in items])
     _run(g, L_RECIPES, [{"id": r["id"], "rule": r["rule"], "command": r["command"], "cwd": r["cwd"],
@@ -94,7 +96,7 @@ def load_world(g: GraphClient, world: dict, reset: bool = False) -> dict:
     _run(g, L_NEEDS, world["needs"])
     _run(g, L_COMMITS, world["commits"])
     _run(g, L_PARENTS, world["parents"])
-    _run(g, L_REFS, [{k: r[k] for k in ("id", "kind", "name", "repo")} for r in world["refs"]])
+    _run(g, L_REFS, [{k: r[k] for k in ("id", "kind", "name", "repo", "domain")} for r in world["refs"]])
     _run(g, L_REF_STORE, [{"ref": r["id"], "store": r["store"]} for r in world["refs"] if r["store"]])
     _run(g, L_POINTS_TO, world["points_to"])
     _run(g, L_TRACKED, world["tracked"])

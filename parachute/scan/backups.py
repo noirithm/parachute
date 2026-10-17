@@ -41,7 +41,7 @@ def scan_backups(root: Path, stores: list[dict], items_by_id: dict, allow_outsid
             except (OutsideSandbox, KeyError, OSError) as ex:
                 warnings.append(f"{s['id']}/{e.get('id')}: {ex}")
             copies.append({"id": e["id"], "kind": e.get("kind", "backup"), "file": e.get("file"),
-                           "store": s["id"], "alive": alive, "encrypted": int(bool(e.get("encrypted"))),
+                           "store": s["id"], "path": f"{s['path']}/{e.get('file')}", "alive": alive, "encrypted": int(bool(e.get("encrypted"))),
                            "sha256": e.get("sha256"), "verified_at": e.get("verified_at")})
             for iid in e.get("covers", []):
                 if iid in items_by_id:

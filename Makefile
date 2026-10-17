@@ -1,6 +1,6 @@
 .RECIPEPREFIX := >
 PY := .venv/bin/python
-.PHONY: setup up down smoke test demo
+.PHONY: setup up down smoke test demo docs
 
 setup:
 > python -m venv .venv
@@ -23,3 +23,6 @@ test:
 
 demo:
 > $(PY) -m parachute.cli demo
+
+docs:
+> $(PY) -m parachute.query_docs

@@ -98,3 +98,9 @@ def test_hops_validation():
 def test_graph_unreachable_fails_closed():
     with pytest.raises(GraphUnavailable):
         connect(port=1)
+
+
+def test_worktree_reflog_is_owned_by_its_worktree(world):
+    reflogs = [r for r in world["refs"] if r["kind"] == "reflog"]
+    assert not any(r["name"].startswith("worktrees/") for r in reflogs)
+    assert any(r["id"].startswith(f"ref:{P}/webshop:reflog:{P}/webshop-exp:") for r in reflogs)

@@ -153,13 +153,14 @@ def scan_git(root: Path, stores: list[dict], tree_dirs: list[Path], items_by_id:
             tips.append(head)
             fmt = "--format=%H%x1f%gd"
             if wpath == repo:
-                log = git(["reflog", "show", "--all", fmt], cwd=wpath, check=False) \
-                    or git(["reflog", "show", "HEAD", fmt], cwd=wpath, check=False)
+                log = (git(["reflog", "show", "--all", fmt], cwd=wpath, check=False)
+                       + git(["reflog", "show", "HEAD", fmt], cwd=wpath, check=False))
             else:
                 log = git(["reflog", "show", "HEAD", fmt], cwd=wpath, check=False)
             for line in log.splitlines()[:REFLOG_LIMIT]:
                 sha, _, sel = line.partition("\x1f")
-                if not sha or sel.startswith(("refs/stash", "stash")):
+                # --all also lists other worktrees' HEAD logs; each one is scanned from inside its own worktree
+                if not sha or sel.startswith(("refs/stash", "stash", "worktrees/")):
                     continue
                 add_ref(f"ref:{repo_rel}:reflog:{wrel}:{sel}", "reflog", sel, repo_rel, store, sha)
                 tips.append(sha)

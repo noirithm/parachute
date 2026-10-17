@@ -1,6 +1,6 @@
 # GROUND-TRUTH: what the pinned FalkorDB image actually does
 
-- Run at: 2026-10-16T18:35:05+00:00
+- Run at: 2026-10-17T03:29:14+00:00
 - Image tag (pinned): `falkordb/falkordb:6.0.0`
 - Server version reported: `8.10.2`
 - Modules: `[['name', 'graph', 'ver', 60000, 'path', '/var/lib/falkordb/bin/falkordb.so', 'args', ['MAX_QUEUED_QUERIES', '25', 'TIMEOUT', '1000', 'RESULTSET_SIZE', '10000']], ['name', 'vectorset', 'ver', 1, 'path', '', 'args', []]]`
