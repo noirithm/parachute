@@ -25,8 +25,8 @@ LOCAL_TIERS = (
     (["worktree_head"], 1, "worktree_prunable"),
     (["reflog"], 0, "reflog"),
 )
-PROPAGATION = (("remote_branch", 2), ("local_ref", 1), ("worktree_prunable", 1), ("reflog", 1))
-LABEL_KINDS = {"remote_branch": ["remote_branch"], "local_ref": ["branch", "tag", "stash", "worktree_head"],
+PROPAGATION = (("remote_branch", 2), ("bundle", 2), ("local_ref", 1), ("worktree_prunable", 1), ("reflog", 1))
+LABEL_KINDS = {"remote_branch": ["remote_branch"], "bundle": ["bundle"], "local_ref": ["branch", "tag", "stash", "worktree_head"],
                "worktree_prunable": ["worktree_head"], "reflog": ["reflog"]}
 
 Q_INIT_ITEMS = """
@@ -35,10 +35,10 @@ SET i.rank = CASE WHEN i.gone = 0 THEN 2 ELSE 0 END,
     i.via = CASE WHEN i.gone = 0 THEN 'present' ELSE 'none' END
 """
 Q_INIT_COMMITS = "MATCH (c:Commit) SET c.rank = 0, c.via = 'none'"
-Q_SEED_REMOTE = """
+Q_SEED_DURABLE = """
 MATCH (r:Ref)-[:POINTS_TO]->(c:Commit)
-WHERE r.gone = 0 AND r.kind = 'remote_branch' AND c.rank < 2
-SET c.rank = 2, c.via = 'remote_branch'
+WHERE r.gone = 0 AND r.kind = $kind AND c.rank < 2
+SET c.rank = 2, c.via = $kind
 """
 Q_SEED_LOCAL = """
 MATCH (r:Ref)-[:POINTS_TO]->(c:Commit)
@@ -104,7 +104,7 @@ def q_justify_holder_parents(n: int) -> str:
 
 
 def query_hashes(n: int) -> dict:
-    named = {"init_items": Q_INIT_ITEMS, "init_commits": Q_INIT_COMMITS, "seed_remote": Q_SEED_REMOTE,
+    named = {"init_items": Q_INIT_ITEMS, "init_commits": Q_INIT_COMMITS, "seed_durable": Q_SEED_DURABLE,
              "seed_local": Q_SEED_LOCAL, "propagate": q_propagate(n), "route_git": Q_ROUTE_GIT,
              "route_copy": Q_ROUTE_COPY, "route_recipe": Q_ROUTE_RECIPE, "destroyed_items": Q_DESTROYED_ITEMS,
              "affected_commits": Q_AFFECTED_COMMITS}
@@ -115,7 +115,8 @@ def run_fixpoint(fork: GraphClient, max_hops: int | None = None) -> dict:
     n = max_hops or config.MAX_HOPS
     fork.query(Q_INIT_ITEMS)
     fork.query(Q_INIT_COMMITS)
-    fork.query(Q_SEED_REMOTE)
+    for kind in ("remote_branch", "bundle"):
+        fork.query(Q_SEED_DURABLE, {"kind": kind})
     for kinds, prunable, label in LOCAL_TIERS:
         fork.query(Q_SEED_LOCAL, {"kinds": kinds, "prunable": prunable, "label": label})
     for label, rank in PROPAGATION:
@@ -145,7 +146,7 @@ def read_outcome(fork: GraphClient) -> dict:
             fragile.append(entry)
         else:
             recoverable.append(entry)
-    lost_commits, fragile_commits, safe_commits = [], [], 0
+    lost_commits, fragile_commits, safe_commits = [], [], []
     for sha, subject, rank, via in fork.rows(Q_AFFECTED_COMMITS):
         entry = {"sha": sha, "subject": subject, "strength": STRENGTH[rank], "via": via}
         if rank == 0:
@@ -153,10 +154,10 @@ def read_outcome(fork: GraphClient) -> dict:
         elif rank == 1:
             fragile_commits.append(entry)
         else:
-            safe_commits += 1
+            safe_commits.append(sha)
     return {"destroyed_items": len(lost) + len(fragile) + len(recoverable), "lost": lost, "fragile": fragile,
             "recoverable": recoverable, "lost_commits": lost_commits, "fragile_commits": fragile_commits,
-            "recoverable_commits": safe_commits}
+            "recoverable_commits": len(safe_commits), "recoverable_commit_shas": safe_commits}
 
 
 def justify(fork: GraphClient, item_id: str, max_hops: int | None = None) -> dict:

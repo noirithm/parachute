@@ -2,6 +2,7 @@ import shutil
 
 import pytest
 
+from parachute.engine.layout import Layout
 from parachute.graphdb import GraphClient, GraphUnavailable
 from parachute.loader import load_world
 from parachute.scan import scan_world
@@ -29,4 +30,14 @@ def graph(sandbox, world):
         pytest.fail(f"FalkorDB not reachable ({e}). Run `make up` first.")
     load_world(g, world, reset=True)
     yield g
+    g.delete()
+
+
+@pytest.fixture
+def fresh(tmp_path):
+    """A private sandbox and graph for tests that destroy things."""
+    sb = generate_world(tmp_path / "box")
+    g = GraphClient(sb.graph_name)
+    load_world(g, scan_world(sb.root), reset=True)
+    yield sb, g, Layout.load(sb.root)
     g.delete()

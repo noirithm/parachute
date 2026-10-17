@@ -226,7 +226,9 @@ def _analytics(root: Path, projects: Path, backups: Path, offsite: Path) -> dict
     rep_tar = backups / "reports-2026-10.tar"
     _tar(an / "reports", "reports", rep_tar)
     _w(backups / "MANIFEST.json", json.dumps({"copies": [{
-        "id": "bk-reports-local", "kind": "backup", "file": rep_tar.name, "encrypted": 0,
+        "id": "bk-reports-local", "kind": "backup", "file": rep_tar.name, "encrypted": 0, "format": "tar",
+        "members": {f"{P}/analytics/reports/q3.csv": "reports/q3.csv",
+                    f"{P}/analytics/reports/q4.csv": "reports/q4.csv"},
         "sha256": _sha256(rep_tar), "verified_at": VERIFIED,
         "covers": [f"{P}/analytics/reports/q3.csv", f"{P}/analytics/reports/q4.csv"], "needs": []}]}, indent=2))
 
@@ -241,11 +243,15 @@ def _analytics(root: Path, projects: Path, backups: Path, offsite: Path) -> dict
     # healthy control: plain copy in the other domain, no key needed
     shutil.copy2(an / "docs" / "runbook.md", offsite / "runbook.md")
     _w(offsite / "MANIFEST.json", json.dumps({"copies": [
-        {"id": "bk-notebooks-enc", "kind": "backup", "file": enc.name, "encrypted": 1,
+        {"id": "bk-notebooks-enc", "kind": "backup", "file": enc.name, "encrypted": 1, "format": "tar",
+         "key": f"{P}/analytics/keys/backup.key",
+         "members": {f"{P}/analytics/notebooks/forecast.py": "notebooks/forecast.py",
+                     f"{P}/analytics/notebooks/eda.py": "notebooks/eda.py"},
          "sha256": _sha256(enc), "verified_at": VERIFIED,
          "covers": [f"{P}/analytics/notebooks/forecast.py", f"{P}/analytics/notebooks/eda.py"],
          "needs": [f"{P}/analytics/keys/backup.key"]},
-        {"id": "bk-runbook", "kind": "backup", "file": "runbook.md", "encrypted": 0,
+        {"id": "bk-runbook", "kind": "backup", "file": "runbook.md", "encrypted": 0, "format": "file",
+         "members": {f"{P}/analytics/docs/runbook.md": ""},
          "sha256": _sha256(offsite / "runbook.md"), "verified_at": VERIFIED,
          "covers": [f"{P}/analytics/docs/runbook.md"], "needs": []}]}, indent=2))
 
@@ -294,7 +300,7 @@ def generate_world(root=None) -> Sandbox:
     meta.mkdir()
     projects, backups = root / "disk_a" / "projects", root / "disk_a" / "backups"
     remote, offsite = root / "disk_b" / "remote", root / "disk_b" / "offsite"
-    for d in (projects, backups, remote, offsite):
+    for d in (projects, backups, remote, offsite, root / "disk_c" / "keyring"):
         d.mkdir(parents=True)
 
     g = _Git()
@@ -308,11 +314,13 @@ def generate_world(root=None) -> Sandbox:
     (meta / "world.json").write_text(json.dumps({
         "session": sid,
         "domains": [{"id": "disk-a", "label": "dev laptop disk", "kind": "disk"},
-                    {"id": "disk-b", "label": "other host / account", "kind": "host"}],
+                    {"id": "disk-b", "label": "other host / account", "kind": "host"},
+                    {"id": "disk-c", "label": "offline keyring", "kind": "account"}],
         "stores": [{"id": "projects", "path": "disk_a/projects", "kind": "tree", "domain": "disk-a"},
                    {"id": "backups-local", "path": "disk_a/backups", "kind": "backup", "domain": "disk-a"},
                    {"id": "origin", "path": "disk_b/remote", "kind": "remote", "domain": "disk-b"},
-                   {"id": "offsite", "path": "disk_b/offsite", "kind": "backup", "domain": "disk-b"}],
+                   {"id": "offsite", "path": "disk_b/offsite", "kind": "backup", "domain": "disk-b"},
+                   {"id": "keyring", "path": "disk_c/keyring", "kind": "tree", "domain": "disk-c"}],
     }, indent=2))
     (meta / "traps.json").write_text(json.dumps(traps, indent=2))
     return Sandbox(root=root, session_id=sid, traps=traps)

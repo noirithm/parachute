@@ -34,13 +34,13 @@ def scan_world(root, allow_outside: bool = False) -> dict:
         it["domain"] = domain_of[it["store"]]
     for c in b["copies"]:
         c["domain"] = domain_of[c["store"]]
-    for r in g["refs"]:
+    for r in g["refs"] + b["bundle_refs"]:
         r["domain"] = domain_of.get(r["store"])
     return {
         "session": meta["session"], "domains": meta["domains"], "stores": stores,
         "items": items, "recipes": recipes,
         "copies": b["copies"], "copy_of": b["copy_of"], "needs": b["needs"],
-        "commits": g["commits"], "parents": g["parents"], "refs": g["refs"],
-        "points_to": g["points_to"], "tracked": g["tracked"],
+        "commits": g["commits"], "parents": g["parents"], "refs": g["refs"] + b["bundle_refs"],
+        "points_to": g["points_to"] + b["bundle_points"], "tracked": g["tracked"],
         "warnings": g["warnings"] + b["warnings"],
     }

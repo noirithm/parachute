@@ -7,6 +7,7 @@ import secrets
 from .. import config
 from ..graphdb import GraphClient, hops
 from ..loader import graph_stats
+from .effects import apply_effects
 from .fixpoint import justify, query_hashes, read_outcome, run_fixpoint
 from .layout import Layout
 from .model import Destroyed
@@ -71,12 +72,15 @@ def apply_destroyed(fork: GraphClient, d: Destroyed, max_hops: int) -> None:
     fork.query(q_spread_affected(max_hops))
 
 
-def whatif(live: GraphClient, destroyed: Destroyed, label: str, max_hops: int | None = None) -> dict:
+def whatif(live: GraphClient, destroyed: Destroyed, label: str, max_hops: int | None = None,
+           effects: dict | None = None) -> dict:
     n = max_hops or config.MAX_HOPS
     before = graph_stats(live)
     fork = live.copy_to(fork_name(live, label))
     try:
         apply_destroyed(fork, destroyed, n)
+        if effects:
+            apply_effects(fork, effects)
         fixpoint = run_fixpoint(fork, n)
         outcome = read_outcome(fork)
         exemplars = {}

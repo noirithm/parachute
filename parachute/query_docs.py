@@ -7,6 +7,8 @@ from pathlib import Path
 from . import config
 from . import queries as q
 from .engine import fixpoint as fx
+from .engine import audit as au
+from .engine import effects as ef
 from .engine import whatif as wi
 
 README = Path(__file__).resolve().parent.parent / "README.md"
@@ -20,6 +22,8 @@ INTRO = ("All Cypher is constant text plus parameters. The only built string is 
 SUMMARY = "World summary"
 FIXPOINT = "Recoverability fixpoint (runs on the fork)"
 FORK = "What-if fork"
+AUDIT = "Audit trail (live graph)"
+EFFECTS = "Fix effects (applied to the fork)"
 JUSTIFY = ("Justification is read back from the nodes the rounds wrote, "
            "so the explanation cannot disagree with the verdict.")
 FORK_ONLY = "Applied to the fork only; the live graph is never written."
@@ -51,7 +55,7 @@ def entries(max_hops: int | None = None) -> list:
         Entry(f, "init_items", fx.Q_INIT_ITEMS,
               "Rank and route label live on the nodes, so every later round is a plain write query."),
         Entry(f, "init_commits", fx.Q_INIT_COMMITS, "Commits start with no holder and gain one from refs."),
-        Entry(f, "seed_remote", fx.Q_SEED_REMOTE, "Remote branches are the only DURABLE holders of commits."),
+        Entry(f, "seed_durable", fx.Q_SEED_DURABLE, "Remote branches and off-domain bundles are the only DURABLE holders of commits."),
         Entry(f, "seed_local", fx.Q_SEED_LOCAL,
               "Local refs, stashes and worktree HEADs hold commits only until the ref goes away (WEAK)."),
         Entry(f, "propagate", fx.q_propagate(n),
@@ -88,6 +92,22 @@ def entries(max_hops: int | None = None) -> list:
         Entry(w, "count_refs_gone", wi.Q_COUNT_REFS_GONE, "Diff against the live graph: refs destroyed."),
         Entry(w, "count_refs_prunable", wi.Q_COUNT_REFS_PRUNABLE, "Diff against the live graph: refs prunable."),
         Entry(w, "live_flags", wi.Q_LIVE_FLAGS, "Run on the live graph after every what-if; it must return zero."),
+        Entry(AUDIT, "action", au.A_ACTION, "A proposed command is a node, so verdicts about the same command share it."),
+        Entry(AUDIT, "verdict", au.A_VERDICT, "A verdict carries the hashes needed to replay it later."),
+        Entry(AUDIT, "about", au.A_ABOUT, "Verdict to Action, so the history of one command is a one-hop read."),
+        Entry(AUDIT, "would_lose", au.A_WOULD_LOSE, "Verdict to the Items it warned about; relinked after each reload."),
+        Entry(AUDIT, "fix_step", au.A_FIXSTEP, "Each planned fix is a FixStep node with its own execution status."),
+        Entry(AUDIT, "set_status", au.A_STATUS, "The verdict status moves from planned to executed or refused."),
+        Entry(AUDIT, "set_fix_status", au.A_FIX_STATUS, "Per-step result, kept next to the verdict that planned it."),
+        Entry(AUDIT, "fingerprint_items", au.Q_FP_ITEMS, "Part of the world hash a verdict is bound to."),
+        Entry(AUDIT, "fingerprint_copies", au.Q_FP_COPIES, "Copy liveness is part of what a verdict depends on."),
+        Entry(AUDIT, "fingerprint_refs", au.Q_FP_REFS, "What every ref points at is part of the world hash."),
+        Entry(EFFECTS, "effect_items", ef.E_ITEMS, "Fix effects are plain writes on the fork; the live graph never sees them."),
+        Entry(EFFECTS, "effect_copies", ef.E_COPIES, "A planned backup appears on the fork as a Copy in its target domain."),
+        Entry(EFFECTS, "effect_copy_of", ef.E_COPY_OF, "COPY_OF edges say which items the planned backup protects."),
+        Entry(EFFECTS, "effect_needs", ef.E_NEEDS, "NEEDS edges carry the independently stored key of a vault."),
+        Entry(EFFECTS, "effect_refs", ef.E_REFS, "A planned push or bundle appears as a durable ref."),
+        Entry(EFFECTS, "effect_points_to", ef.E_POINTS, "The new ref points at the commits it will hold."),
     ]
 
 

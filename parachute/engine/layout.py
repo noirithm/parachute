@@ -38,6 +38,16 @@ class Layout:
     def rel(self, path: str) -> str:
         return os.path.relpath(path, self.root).replace(os.sep, "/")
 
+    def store_of(self, rel: str):
+        for s in sorted(self.stores, key=lambda s: -len(s["path"])):
+            if rel == s["path"] or rel.startswith(s["path"] + "/"):
+                return s
+        return None
+
+    def domain_of(self, rel: str):
+        s = self.store_of(rel)
+        return s["domain"] if s else None
+
     def locate(self, text: str, cwd: str) -> str:
         """Absolute path of `text` as the shell would act on it: parents resolved, last component untouched."""
         absolute = os.path.normpath(os.path.join(cwd, text))
@@ -63,7 +73,7 @@ class Layout:
         return [self.rel(p) for p in self.walk_files(path)]
 
     def git_dirs(self) -> list:
-        """(repo path, path of its HEAD file) for every git repository in the sandbox."""
+        """(holder path, the file whose destruction destroys it) for repositories and bundle files."""
         out = []
         for s in self.stores:
             base = os.path.join(self.root, s["path"])
@@ -79,4 +89,10 @@ class Layout:
                     if os.path.isfile(os.path.join(candidate, "HEAD")) and os.path.isdir(os.path.join(candidate, "objects")):
                         rel = self.rel(candidate)
                         out.append((rel, f"{rel}/HEAD"))
+            elif s["kind"] == "backup" and os.path.isdir(base):
+                for dirpath, _, filenames in os.walk(base):
+                    for name in sorted(filenames):
+                        if name.endswith(".bundle"):
+                            rel = self.rel(os.path.join(dirpath, name))
+                            out.append((rel, rel))
         return out

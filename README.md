@@ -140,14 +140,14 @@ Query hash `dab27175`. *Why a graph:* Commits start with no holder and gain one 
 MATCH (c:Commit) SET c.rank = 0, c.via = 'none'
 ```
 
-#### seed_remote
+#### seed_durable
 
-Query hash `6c5a3b6d`. *Why a graph:* Remote branches are the only DURABLE holders of commits.
+Query hash `eb145a8f`. *Why a graph:* Remote branches and off-domain bundles are the only DURABLE holders of commits.
 
 ```cypher
 MATCH (r:Ref)-[:POINTS_TO]->(c:Commit)
-WHERE r.gone = 0 AND r.kind = 'remote_branch' AND c.rank < 2
-SET c.rank = 2, c.via = 'remote_branch'
+WHERE r.gone = 0 AND r.kind = $kind AND c.rank < 2
+SET c.rank = 2, c.via = $kind
 ```
 
 #### seed_local
@@ -436,5 +436,137 @@ Query hash `5b09f741`. *Why a graph:* Run on the live graph after every what-if;
 ```cypher
 MATCH (n) WHERE n.gone = 1 OR n.prunable = 1 OR n.affected = 1 OR n.rank IS NOT NULL
 RETURN count(n)
+```
+
+### Audit trail (live graph)
+
+#### action
+
+Query hash `24b7d435`. *Why a graph:* A proposed command is a node, so verdicts about the same command share it.
+
+```cypher
+MERGE (a:Action {id: $id}) SET a.command = $command, a.cwd = $cwd
+```
+
+#### verdict
+
+Query hash `6733f638`. *Why a graph:* A verdict carries the hashes needed to replay it later.
+
+```cypher
+CREATE (v:Verdict {id: $id, verdict: $verdict, status: $status, command: $command, cwd: $cwd, created: $created, degraded: $degraded, destroyed_hash: $destroyed_hash, outcome_hash: $outcome_hash, plan_hash: $plan_hash, world_fp: $world_fp, lost_json: $lost_json, payload: $payload})
+```
+
+#### about
+
+Query hash `2335de1d`. *Why a graph:* Verdict to Action, so the history of one command is a one-hop read.
+
+```cypher
+MATCH (v:Verdict {id: $vid}) MATCH (a:Action {id: $aid}) CREATE (v)-[:ABOUT]->(a)
+```
+
+#### would_lose
+
+Query hash `bad025a9`. *Why a graph:* Verdict to the Items it warned about; relinked after each reload.
+
+```cypher
+UNWIND $ids AS iid MATCH (v:Verdict {id: $vid}) MATCH (i:Item {id: iid}) MERGE (v)-[:WOULD_LOSE]->(i)
+```
+
+#### fix_step
+
+Query hash `fa93afff`. *Why a graph:* Each planned fix is a FixStep node with its own execution status.
+
+```cypher
+MATCH (v:Verdict {id: $vid}) CREATE (v)-[:PLANS]->(:FixStep {id: $id, fix: $fix, kind: $kind, cost: $cost, status: 'planned', params_json: $params, result_json: ''})
+```
+
+#### set_status
+
+Query hash `1431f6d4`. *Why a graph:* The verdict status moves from planned to executed or refused.
+
+```cypher
+MATCH (v:Verdict {id: $id}) SET v.status = $status, v.detail = $detail
+```
+
+#### set_fix_status
+
+Query hash `788cd372`. *Why a graph:* Per-step result, kept next to the verdict that planned it.
+
+```cypher
+MATCH (f:FixStep {id: $id}) SET f.status = $status, f.result_json = $result
+```
+
+#### fingerprint_items
+
+Query hash `6ece6a4a`. *Why a graph:* Part of the world hash a verdict is bound to.
+
+```cypher
+MATCH (i:Item) RETURN i.id AS id, i.content_hash AS hash ORDER BY id
+```
+
+#### fingerprint_copies
+
+Query hash `3f5bdc9e`. *Why a graph:* Copy liveness is part of what a verdict depends on.
+
+```cypher
+MATCH (c:Copy) RETURN c.id AS id, c.alive AS alive ORDER BY id
+```
+
+#### fingerprint_refs
+
+Query hash `5772b22a`. *Why a graph:* What every ref points at is part of the world hash.
+
+```cypher
+MATCH (r:Ref)-[:POINTS_TO]->(c:Commit) RETURN r.id AS id, c.sha AS sha ORDER BY id, sha
+```
+
+### Fix effects (applied to the fork)
+
+#### effect_items
+
+Query hash `66c8d9d4`. *Why a graph:* Fix effects are plain writes on the fork; the live graph never sees them.
+
+```cypher
+UNWIND $values AS v MERGE (i:Item {id: v.id}) SET i.path = v.id, i.kind = 'file', i.class = v.cls, i.domain = v.domain, i.gone = 0
+```
+
+#### effect_copies
+
+Query hash `1932b52c`. *Why a graph:* A planned backup appears on the fork as a Copy in its target domain.
+
+```cypher
+UNWIND $values AS v MERGE (c:Copy {id: v.id}) SET c.kind = v.kind, c.path = v.path, c.domain = v.domain, c.alive = 1, c.gone = 0
+```
+
+#### effect_copy_of
+
+Query hash `e432ca1a`. *Why a graph:* COPY_OF edges say which items the planned backup protects.
+
+```cypher
+UNWIND $values AS v MATCH (c:Copy {id: v.copy}) MATCH (i:Item {id: v.item}) MERGE (c)-[x:COPY_OF]->(i) SET x.kind = v.kind
+```
+
+#### effect_needs
+
+Query hash `fc9f75ef`. *Why a graph:* NEEDS edges carry the independently stored key of a vault.
+
+```cypher
+UNWIND $values AS v MATCH (c:Copy {id: v.copy}) MATCH (k:Item {id: v.item}) MERGE (c)-[:NEEDS]->(k)
+```
+
+#### effect_refs
+
+Query hash `0cc09e73`. *Why a graph:* A planned push or bundle appears as a durable ref.
+
+```cypher
+UNWIND $values AS v MERGE (r:Ref {id: v.id}) SET r.kind = v.kind, r.name = v.name, r.repo = v.repo, r.domain = v.domain, r.gone = 0, r.prunable = 0
+```
+
+#### effect_points_to
+
+Query hash `5679ffa1`. *Why a graph:* The new ref points at the commits it will hold.
+
+```cypher
+UNWIND $values AS v MATCH (r:Ref {id: v.ref}) MATCH (c:Commit {sha: v.sha}) MERGE (r)-[:POINTS_TO]->(c)
 ```
 <!-- queries:end -->

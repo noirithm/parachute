@@ -10,8 +10,14 @@ from pathlib import Path
 from .graphdb import GraphClient, GraphUnavailable, connect
 from .loader import load_world
 from .queries import world_summary
+from .engine import audit
+from .engine.executor import execute
 from .engine.layout import Layout
-from .engine.whatif import analyze
+from .engine.oracle import RestoreOracle
+from .engine.planner import plan as make_plan
+from .engine.policy import preflight, replay
+from .engine.resolver import resolve
+from .engine.whatif import analyze, whatif as run_whatif
 from .scan import scan_world
 from .world.generator import generate_world
 
@@ -37,6 +43,17 @@ def _brief(result: dict) -> dict:
     return out
 
 
+def _view(v: dict) -> dict:
+    out = {"id": v["id"], "verdict": v["verdict"], "degraded": bool(v["degraded"]), "reasons": v["reasons"]}
+    if v["outcome"]:
+        o = v["outcome"]
+        out["at_risk"] = {"lost": len(o["lost"]), "fragile": len(o["fragile"]), "lost_commits": len(o["lost_commits"]),
+                          "fragile_commits": len(o["fragile_commits"]), "recoverable": len(o["recoverable"])}
+    if v["plan"] and v["plan"]["fixes"]:
+        out["fixes"] = [{"id": f["id"], "kind": f["kind"], "cost": f["cost"]} for f in v["plan"]["fixes"]]
+    return out
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="parachute")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -51,6 +68,19 @@ def main(argv=None) -> int:
     w.add_argument("root")
     w.add_argument("command")
     w.add_argument("--cwd", help="working directory, relative to the sandbox root")
+    pl = sub.add_parser("plan")
+    pl.add_argument("root")
+    pl.add_argument("command")
+    pl.add_argument("--cwd", help="working directory, relative to the sandbox root")
+    for name in ("preflight", "run"):
+        cmd = sub.add_parser(name)
+        cmd.add_argument("root")
+        cmd.add_argument("command")
+        cmd.add_argument("--cwd", help="working directory, relative to the sandbox root")
+    rp = sub.add_parser("replay")
+    rp.add_argument("root")
+    rp.add_argument("verdict_id")
+    sub.add_parser("audit").add_argument("root")
     sub.add_parser("demo")
     a = ap.parse_args(argv)
 
@@ -82,6 +112,27 @@ def main(argv=None) -> int:
             cwd = Path(a.root, a.cwd) if a.cwd else Path(a.root, "disk_a", "projects")
             result = analyze(_graph_for(a.root), Layout.load(a.root), a.command, str(cwd))
             print(json.dumps(_brief(result), indent=2))
+        elif a.cmd == "plan":
+            cwd = Path(a.root, a.cwd) if a.cwd else Path(a.root, "disk_a", "projects")
+            graph, layout = _graph_for(a.root), Layout.load(a.root)
+            res = resolve(a.command, str(cwd), layout)
+            if res.forced_verdict or res.destroyed.is_empty():
+                print(json.dumps({"forced_verdict": res.forced_verdict, "reasons": res.reasons}, indent=2))
+            else:
+                base = run_whatif(graph, res.destroyed, res.command)
+                print(json.dumps(make_plan(graph, layout, res.destroyed, base, res.command), indent=2))
+        elif a.cmd in ("preflight", "run"):
+            cwd = Path(a.root, a.cwd) if a.cwd else Path(a.root, "disk_a", "projects")
+            graph, layout = _graph_for(a.root), Layout.load(a.root)
+            verdict = preflight(graph, layout, a.command, str(cwd))
+            out = {"verdict": _view(verdict)}
+            if a.cmd == "run" and verdict["verdict"] in ("GO", "FIX_THEN_GO"):
+                out["execution"] = execute(graph, layout, verdict, oracle=RestoreOracle(layout.root))
+            print(json.dumps(out, indent=2, default=str))
+        elif a.cmd == "replay":
+            print(json.dumps(replay(_graph_for(a.root), Layout.load(a.root), a.verdict_id), indent=2))
+        elif a.cmd == "audit":
+            print(json.dumps(audit.list_verdicts(_graph_for(a.root)), indent=2))
         elif a.cmd == "demo":
             sb = generate_world()
             g = GraphClient(sb.graph_name)

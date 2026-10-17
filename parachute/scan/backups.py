@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 
 from ..guard import OutsideSandbox, require_inside
+from .gitscan import git
 
 
 def _sha256(path: Path) -> str:
@@ -54,4 +55,24 @@ def scan_backups(root: Path, stores: list[dict], items_by_id: dict, allow_outsid
                     needs.append({"copy": e["id"], "item": iid})
                 else:
                     warnings.append(f"{e['id']}: needs unknown item {iid}")
-    return {"copies": copies, "copy_of": copy_of, "needs": needs, "warnings": warnings}
+    bundle_refs, bundle_points = _scan_bundles(root, stores)
+    return {"copies": copies, "copy_of": copy_of, "needs": needs, "warnings": warnings,
+            "bundle_refs": bundle_refs, "bundle_points": bundle_points}
+
+
+def _scan_bundles(root, stores):
+    refs, points = [], []
+    for s in stores:
+        sdir = root / s["path"]
+        if s["kind"] != "backup" or not sdir.is_dir():
+            continue
+        for f in sorted(sdir.rglob("*.bundle")):
+            rel = f.relative_to(root).as_posix()
+            for line in git(["bundle", "list-heads", str(f)], check=False).splitlines():
+                sha, _, name = line.partition(" ")
+                if len(sha) != 40 or not name:
+                    continue
+                rid = f"ref:{rel}:{name}"
+                refs.append({"id": rid, "kind": "bundle", "name": name, "repo": rel, "store": s["id"]})
+                points.append({"ref": rid, "sha": sha})
+    return refs, points

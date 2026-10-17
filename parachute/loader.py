@@ -53,6 +53,12 @@ L_TRACKED = ("UNWIND $rows AS row MATCH (i:Item {id: row.item}) MATCH (c:Commit 
              "MERGE (i)-[x:TRACKED_AT]->(c) SET x.blob = row.blob")
 
 
+def reset_world(g: GraphClient) -> None:
+    """Drop the scanned world but keep audit nodes (Verdict, Action, FixStep)."""
+    for label in LABELS:
+        g.query(f"MATCH (n:{label}) DETACH DELETE n")
+
+
 def ensure_schema(g: GraphClient) -> None:
     for label, prop in INDEXES:  # constants only, never user data
         try:
@@ -76,7 +82,7 @@ def graph_stats(g: GraphClient) -> dict:
 
 def load_world(g: GraphClient, world: dict, reset: bool = False) -> dict:
     if reset:
-        g.query(Q_RESET)
+        reset_world(g)
     ensure_schema(g)
     items = world["items"]
     _run(g, L_DOMAINS, world["domains"])
