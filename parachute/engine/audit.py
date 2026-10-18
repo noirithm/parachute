@@ -24,9 +24,25 @@ A_FIX_STATUS = "MATCH (f:FixStep {id: $id}) SET f.status = $status, f.result_jso
 Q_VERDICT_LOST = "MATCH (v:Verdict) RETURN v.id, v.lost_json"
 Q_LOAD = "MATCH (v:Verdict {id: $id}) RETURN v.verdict, v.status, v.command, v.cwd, v.created, v.degraded, v.payload"
 Q_LIST = "MATCH (v:Verdict) RETURN v.id, v.verdict, v.status, v.command, v.created ORDER BY v.created"
-Q_FP_ITEMS = "MATCH (i:Item) RETURN i.id AS id, i.content_hash AS hash ORDER BY id"
-Q_FP_COPIES = "MATCH (c:Copy) RETURN c.id AS id, c.alive AS alive ORDER BY id"
-Q_FP_REFS = "MATCH (r:Ref)-[:POINTS_TO]->(c:Commit) RETURN r.id AS id, c.sha AS sha ORDER BY id, sha"
+# Fingerprint only the modeled world. Audit nodes (Verdict, Action, FixStep)
+# are deliberately excluded because recording a verdict must not stale itself.
+_WORLD_LABELS = (
+    "Item", "Copy", "Ref", "Commit", "Recipe", "Store", "Domain",
+)
+_WORLD_FILTER = " OR ".join(f"n:{label}" for label in _WORLD_LABELS)
+_WORLD_EDGE_FILTER_A = " OR ".join(f"a:{label}" for label in _WORLD_LABELS)
+_WORLD_EDGE_FILTER_B = " OR ".join(f"b:{label}" for label in _WORLD_LABELS)
+
+Q_FP_NODES = (
+    "MATCH (n) WHERE " + _WORLD_FILTER +
+    " RETURN labels(n), properties(n)"
+)
+Q_FP_EDGES = (
+    "MATCH (a)-[r]->(b) WHERE (" + _WORLD_EDGE_FILTER_A +
+    ") AND (" + _WORLD_EDGE_FILTER_B +
+    ") RETURN labels(a), properties(a), type(r), properties(r), "
+    "labels(b), properties(b)"
+)
 
 
 def digest(obj) -> str:
@@ -35,8 +51,18 @@ def digest(obj) -> str:
 
 
 def fingerprint(live: GraphClient) -> str:
-    """Hash of everything a verdict depends on: item contents, copy liveness, and what every ref points at."""
-    return digest([live.rows(Q_FP_ITEMS), live.rows(Q_FP_COPIES), live.rows(Q_FP_REFS)])
+    """Deterministic fingerprint of the modeled world, excluding the audit trail."""
+    def canonical_rows(rows):
+        encoded = [
+            json.dumps(row, sort_keys=True, separators=(",", ":"), default=str)
+            for row in rows
+        ]
+        return sorted(encoded)
+
+    return digest([
+        canonical_rows(live.rows(Q_FP_NODES)),
+        canonical_rows(live.rows(Q_FP_EDGES)),
+    ])
 
 
 def lost_summary(outcome) -> dict:

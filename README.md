@@ -496,28 +496,20 @@ Query hash `788cd372`. *Why a graph:* Per-step result, kept next to the verdict 
 MATCH (f:FixStep {id: $id}) SET f.status = $status, f.result_json = $result
 ```
 
-#### fingerprint_items
+#### fingerprint_nodes
 
-Query hash `6ece6a4a`. *Why a graph:* Part of the world hash a verdict is bound to.
+Query hash `87d7095a`. *Why a graph:* All modeled world-node properties contribute to the verdict fingerprint.
 
 ```cypher
-MATCH (i:Item) RETURN i.id AS id, i.content_hash AS hash ORDER BY id
+MATCH (n) WHERE n:Item OR n:Copy OR n:Ref OR n:Commit OR n:Recipe OR n:Store OR n:Domain RETURN labels(n), properties(n)
 ```
 
-#### fingerprint_copies
+#### fingerprint_edges
 
-Query hash `3f5bdc9e`. *Why a graph:* Copy liveness is part of what a verdict depends on.
-
-```cypher
-MATCH (c:Copy) RETURN c.id AS id, c.alive AS alive ORDER BY id
-```
-
-#### fingerprint_refs
-
-Query hash `5772b22a`. *Why a graph:* What every ref points at is part of the world hash.
+Query hash `be95b002`. *Why a graph:* Relationships between modeled world nodes contribute to the verdict fingerprint.
 
 ```cypher
-MATCH (r:Ref)-[:POINTS_TO]->(c:Commit) RETURN r.id AS id, c.sha AS sha ORDER BY id, sha
+MATCH (a)-[r]->(b) WHERE (a:Item OR a:Copy OR a:Ref OR a:Commit OR a:Recipe OR a:Store OR a:Domain) AND (b:Item OR b:Copy OR b:Ref OR b:Commit OR b:Recipe OR b:Store OR b:Domain) RETURN labels(a), properties(a), type(r), properties(r), labels(b), properties(b)
 ```
 
 ### Fix effects (applied to the fork)

@@ -72,3 +72,43 @@ def test_failed_fix_blocks_the_command(fresh):
     assert (sb.root / P / "analytics").exists()
     assert g.scalar("MATCH (:Verdict {id: $id})-[:PLANS]->(f:FixStep {status: 'failed'}) RETURN count(f)",
                     {"id": v["id"]}) == 1
+
+
+def test_nonzero_exit_is_not_reported_as_executed(fresh, monkeypatch):
+    sb, g, layout = fresh
+    v = preflight(g, layout, "rm -f missing-file", str(sb.root / P))
+    assert v["verdict"] == "GO"
+
+    monkeypatch.setattr(
+        "parachute.engine.executor.run_shell",
+        lambda *args, **kwargs: {
+            "returncode": 7,
+            "timeout": False,
+            "stdout": "",
+            "stderr": "simulated command failure",
+        },
+    )
+
+    result = execute(g, layout, v)
+    assert result["status"] == "command_failed"
+    assert result["command"]["returncode"] == 7
+
+
+def test_timeout_is_not_reported_as_executed(fresh, monkeypatch):
+    sb, g, layout = fresh
+    v = preflight(g, layout, "rm -f missing-file", str(sb.root / P))
+    assert v["verdict"] == "GO"
+
+    monkeypatch.setattr(
+        "parachute.engine.executor.run_shell",
+        lambda *args, **kwargs: {
+            "returncode": None,
+            "timeout": True,
+            "stdout": "",
+            "stderr": "",
+        },
+    )
+
+    result = execute(g, layout, v, timeout=1)
+    assert result["status"] == "timed_out"
+    assert result["command"]["timeout"] is True
